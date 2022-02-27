@@ -86,16 +86,15 @@ def _score_sequences(seq1: str, seq2: str, match: int, mismatch: int, gapopen: i
     
     return H
 
-def _max_score(S: np.ndarray):
-    """Find the last occurance of the maximum score"""
-    _val =np.argmax(S)
-    idx = np.array(np.unravel_index(((S==_val)[::-1,::-1]).argmax(), S.shape))
-    return S.shape - idx - 1
+def _max_score_indx(S: np.ndarray):
+    """Find the *last* occurance of the maximum score"""
+    rows, cols = np.where(S == S.max())
+    return rows[-1], cols[-1]
 
 def _traceback(S: np.ndarray):
     """Create a traceback path for a given score matrix"""
     # get index of maximum score
-    _max_indx = _max_score(S)
+    _max_indx = _max_score_indx(S)
     i, j = _max_indx
 
     # init path
@@ -128,7 +127,7 @@ def smith_waterman(seq1: str, seq2: str, match: int, mismatch: int, gapopen: int
     H = _score_sequences(seq1, seq2, match, mismatch, gapopen, gapextend)
     PATH = _traceback(H)
 
-    _max_indx = _max_score(H)
+    _max_indx = _max_score_indx(H)
     i, j = _max_indx
 
     for P in PATH:
@@ -158,8 +157,8 @@ def smith_waterman(seq1: str, seq2: str, match: int, mismatch: int, gapopen: int
 
 def main(filename1, filename2, match, mismatch, gapopen, gapextend):
     # read the name and sequence from the file
-    name1, seq1 = read_single_contig_fasta(filename1)
-    name2, seq2 = read_single_contig_fasta(filename2)
+    _, seq1 = read_single_contig_fasta(filename1)
+    _, seq2 = read_single_contig_fasta(filename2)
 
     # this function takes as input two nucleotide sequences along with
     # scores for an alignment match, mismatch, opening a new gap, and 
