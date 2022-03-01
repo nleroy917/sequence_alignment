@@ -16,7 +16,7 @@ import numpy as np
 from itertools import groupby
 
 # set flags
-STOP, DIAG, UP, LEFT= range(4)
+STOP, DIAG, UP, LEFT = range(4)
 
 # a simple function to read the name and sequence from a file
 # The file is expected to have just one contig/sequence. This function
@@ -53,17 +53,7 @@ def _score_sequences(seq1: str, seq2: str, match: int, mismatch: int, gapopen: i
 
     # init scoring matrix
     H = np.zeros(
-        (LEN1+1, LEN2+1), dtype=int
-    )
-
-    # gap matrix
-    D = np.zeros(
-        (LEN1+1, LEN2+1), dtype=int
-    )
-
-    # gap matrix
-    I = np.zeros(
-        (LEN1+1, LEN2+1), dtype=int
+        (LEN1+1, LEN2+1), dtype=float
     )
 
     # traceback matrix
@@ -74,42 +64,55 @@ def _score_sequences(seq1: str, seq2: str, match: int, mismatch: int, gapopen: i
     # score sequences
     for i in range(1,H.shape[0]):
         for j in range(1,H.shape[1]):
-        
-            # update deletion gap matrix
-            D[i][j] = max(
-                0,
-                D[i-1][j] - gapextend,
-                H[i-1][j] - gapopen
-            )
 
-            # update insertion matrix
-            I[i][j] = max(
-                0,
-                I[i][j-1] - gapextend,
-                H[i][j-1] - gapopen
-            )
+            # calculate diagonal score
+            if seq1[i-1] == seq2[j-1]:
+                MATCHSCORE = H[i-1][j-1] +match
+            else:
+                MATCHSCORE = H[i-1][j-1] -mismatch
+            
+            # calculate up score
+            if T[i-1][j] == UP:
+                num_ups = 0
+                k = i-1
+                while T[k][j] == UP:
+                    num_ups += 1
+                    k -= 1
+                UPSCORE = H[i-num_ups][j] -(num_ups+1)*(gapextend)
+            else:
+                UPSCORE = H[i-1][j] -gapopen
+            
+            # calculate left score
+            if T[i][j-1] == LEFT:
+                num_lefts = 0
+                l = j-1
+                while T[i][l] == UP:
+                    num_lefts += 1
+                    l -= 1
+                LEFTSCORE = H[i][j-num_lefts] -(num_lefts+1)*(gapextend)
+            else:
+                LEFTSCORE = H[i][j-1] -gapopen
 
-            # update scoring matrix
-            MATCH = H[i-1][j-1] + (match if seq1[i-1] == seq2[j-1] else -mismatch)
-            DEL = D[i][j]
-            INSR = I[i][j]
-
+            # get the max
             H[i][j] += max(
                 0,
-                MATCH,
-                DEL,
-                INSR,
+                MATCHSCORE,
+                UPSCORE,
+                LEFTSCORE,
             )
 
             # update traceback matrix
-            if H[i][j] == 0:
-                T[i][j] = STOP
-            elif H[i][j] == MATCH:
+            if H[i][j] == MATCHSCORE:
                 T[i][j] = DIAG
-            elif H[i][j] == DEL:
+
+            elif H[i][j] == UPSCORE:
                 T[i][j] = UP
-            elif H[i][j] == INSR:
+
+            elif H[i][j] == LEFTSCORE:
                 T[i][j] = LEFT
+
+            elif H[i][j] == 0:
+                T[i][j] = STOP
             else:
                 T[i][j] = -1
 
@@ -133,7 +136,7 @@ def smith_waterman(seq1: str, seq2: str, match: int, mismatch: int, gapopen: int
     i, j = _max_indx
 
     # traceback
-    while T[i][j] != STOP:
+    while T[i][j]:
         _dir = T[i][j]
         if _dir == DIAG:
             j-=1
