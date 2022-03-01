@@ -13,7 +13,6 @@
 from sys import argv, stderr
 from getopt import getopt, GetoptError
 import numpy as np
-from itertools import groupby
 
 # set flags
 STOP, DIAG, UP, LEFT = range(4)
@@ -58,7 +57,7 @@ def _score_sequences(seq1: str, seq2: str, match: int, mismatch: int, gapopen: i
 
     # traceback matrix
     T = np.zeros(
-        (LEN1+1, LEN2+1), dtype=int
+        (LEN1+1, LEN2+1), dtype=float
     )
 
     # score sequences
@@ -78,7 +77,7 @@ def _score_sequences(seq1: str, seq2: str, match: int, mismatch: int, gapopen: i
                 while T[k][j] == UP:
                     num_ups += 1
                     k -= 1
-                UPSCORE = H[i-num_ups][j] -(num_ups+1)*(gapextend)
+                UPSCORE = H[i-num_ups-1][j]  -gapopen-(num_ups+1)*(gapextend)
             else:
                 UPSCORE = H[i-1][j] -gapopen
             
@@ -86,10 +85,10 @@ def _score_sequences(seq1: str, seq2: str, match: int, mismatch: int, gapopen: i
             if T[i][j-1] == LEFT:
                 num_lefts = 0
                 l = j-1
-                while T[i][l] == UP:
+                while T[i][l] == LEFT:
                     num_lefts += 1
                     l -= 1
-                LEFTSCORE = H[i][j-num_lefts] -(num_lefts+1)*(gapextend)
+                LEFTSCORE = H[i][j-num_lefts-1] -gapopen-(num_lefts+1)*(gapextend)
             else:
                 LEFTSCORE = H[i][j-1] -gapopen
 
@@ -111,10 +110,8 @@ def _score_sequences(seq1: str, seq2: str, match: int, mismatch: int, gapopen: i
             elif H[i][j] == LEFTSCORE:
                 T[i][j] = LEFT
 
-            elif H[i][j] == 0:
-                T[i][j] = STOP
             else:
-                T[i][j] = -1
+                T[i][j] = STOP
 
     return H, T
 
