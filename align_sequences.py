@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 """
     usage:
         align_sequences [options] seq1.fa seq2.fa
@@ -14,6 +13,10 @@
 from sys import argv, stderr
 from getopt import getopt, GetoptError
 import numpy as np
+from itertools import groupby
+
+# set flags
+STOP, DIAG, UP, LEFT= range(4)
 
 # a simple function to read the name and sequence from a file
 # The file is expected to have just one contig/sequence. This function
@@ -48,7 +51,7 @@ def _score_sequences(seq1: str, seq2: str, match: int, mismatch: int, gapopen: i
     LEN1 = len(seq1)
     LEN2 = len(seq2)
 
-    # init scoreing matrix
+    # init scoring matrix
     H = np.zeros(
         (LEN1+1, LEN2+1), dtype=int
     )
@@ -63,89 +66,91 @@ def _score_sequences(seq1: str, seq2: str, match: int, mismatch: int, gapopen: i
         (LEN1+1, LEN2+1), dtype=int
     )
 
+    # traceback matrix
+    T = np.zeros(
+        (LEN1+1, LEN2+1), dtype=int
+    )
+
     # score sequences
     for i in range(1,H.shape[0]):
         for j in range(1,H.shape[1]):
-            # update gap matrix
+        
+            # update deletion gap matrix
             D[i][j] = max(
+                0,
                 D[i-1][j] - gapextend,
-                H[i-1][j] - gapextend - gapopen
+                H[i-1][j] - gapopen
             )
-            # update gap matrix
+
+            # update insertion matrix
             I[i][j] = max(
+                0,
                 I[i][j-1] - gapextend,
-                H[i][j-1] - gapextend - gapopen
+                H[i][j-1] - gapopen
             )
+
             # update scoring matrix
+            MATCH = H[i-1][j-1] + (match if seq1[i-1] == seq2[j-1] else -mismatch)
+            DEL = D[i][j]
+            INSR = I[i][j]
+
             H[i][j] += max(
                 0,
-                H[i-1][j-1] + (match if seq1[i-1] == seq2[j-1] else -mismatch),
-                D[i][j],
-                I[i][j]
+                MATCH,
+                DEL,
+                INSR,
             )
-    
-    return H
+
+            # update traceback matrix
+            if H[i][j] == 0:
+                T[i][j] = STOP
+            elif H[i][j] == MATCH:
+                T[i][j] = DIAG
+            elif H[i][j] == DEL:
+                T[i][j] = UP
+            elif H[i][j] == INSR:
+                T[i][j] = LEFT
+            else:
+                T[i][j] = -1
+
+    return H, T
 
 def _max_score_indx(S: np.ndarray):
     """Find the *last* occurance of the maximum score"""
     rows, cols = np.where(S == S.max())
     return rows[-1], cols[-1]
 
-def _traceback(S: np.ndarray):
-    """Create a traceback path for a given score matrix"""
-    # get index of maximum score
-    _max_indx = _max_score_indx(S)
-    i, j = _max_indx
-
-    # init path
-    PATH = []
-
-    while S[i][j] != 0:
-        PATH.append(
-            max(
-                (S[i-1][j-1], "DIAG"), # move diagonaly -> first, so we move here by default
-                (S[i-1][j], "UP"), # move UP
-                (S[i][j-1], "LEFT"), # move LEFT
-                key=lambda s: s[0])[1] # extract the score, return the P
-        )
-        _last = PATH[-1]
-        if _last == "DIAG":
-            i -= 1
-            j -= 1
-        if _last == "UP":
-            i -= 1
-        if _last == "LEFT":
-            j -= 1
-
-    return PATH
-
 def smith_waterman(seq1: str, seq2: str, match: int, mismatch: int, gapopen: int, gapextend: int):
     max_score = 0
     alnseq1 = ""
     alnseq2 = ""
 
-    H = _score_sequences(seq1, seq2, match, mismatch, gapopen, gapextend)
-    PATH = _traceback(H)
+    # create scoring and traceback matrix
+    H, T = _score_sequences(seq1, seq2, match, mismatch, gapopen, gapextend)
 
+    # get index of maximum value
     _max_indx = _max_score_indx(H)
     i, j = _max_indx
 
-    for P in PATH:
-        if P == "DIAG":
-            alnseq1 += seq1[i-1]
-            alnseq2 += seq2[j-1]
-            i-=1
+    # traceback
+    while T[i][j] != STOP:
+        _dir = T[i][j]
+        if _dir == DIAG:
             j-=1
-        elif P == "LEFT":
+            i-=1
+            alnseq1 += seq1[i]
+            alnseq2 += seq2[j]
+            
+        elif _dir == LEFT:
+            j-=1
             alnseq1 += "-"
-            alnseq2 += seq2[j-1]
-            j-=1
-        elif P == "UP":
-            alnseq1 += seq1[i-1]
-            alnseq2 += "-"
+            alnseq2 += seq2[j]
+        elif _dir == UP:
             i-=1
+            alnseq1 += seq1[i]
+            alnseq2 += "-"
         else:
-            raise ValueError(f"Unknown P: {P}")
+            raise ValueError(f"Unknown direction: {_dir}")
 
         if i == 0 or j == 0:
             break
